@@ -1,0 +1,34 @@
+--drop FUNCTION point_simplify_grid;
+CREATE OR REPLACE FUNCTION point_simplify_grid(
+        PAR_minx                         double precision,
+		PAR_miny                         double precision,
+		PAR_maxx                         double precision,
+		PAR_maxy                         double precision, 
+        PAR_threshold                    double precision
+) RETURNS geometry AS $$
+DECLARE
+        REC_points         			RECORD;
+        ARR_result_points  			geometry[];
+        GEO_point          			geometry;
+        grid_key            		VARCHAR(10);
+        GEOM_result        			geometry;
+        grid_num_x              INTEGER;
+        grid_num_y              INTEGER;
+        grid_json               jsonb;
+BEGIN
+		grid_num_x := ceil((PAR_maxx - PAR_minx)/PAR_threshold);
+		grid_num_y := ceil((PAR_maxy - PAR_miny)/PAR_threshold);
+		grid_json :='{}'::jsonb;
+        ARR_result_points :='{}'::geometry[];
+		for REC_points in select * from tycd_view where geom && st_makeenvelope(PAR_minx,PAR_miny,PAR_maxx,PAR_maxy,4326) LOOP
+			grid_key := ceil((st_x(REC_points.geom)-PAR_minx)/PAR_threshold)||','||ceil((st_y(REC_points.geom)-PAR_miny)/PAR_threshold);
+			if  NOT(grid_json?grid_key)  THEN
+				ARR_result_points := array_append(ARR_result_points, st_setsrid(REC_points.geom,4326));
+				grid_json :=grid_json||('{"'||grid_key||'":true}')::jsonb;
+			end if;
+		end loop;
+	    GEOM_result := st_union(ARR_result_points);
+        return GEOM_result;
+END;
+$$ LANGUAGE plpgsql;
+--select st_asgeojson(point_simplify_grid(73,3,135,53,0.2))
